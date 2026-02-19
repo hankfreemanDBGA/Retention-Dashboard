@@ -81,14 +81,17 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
                 use_container_width=True, hide_index=True
             )
             st.markdown(f"**Current `IN_FORCE_STATUS` setting:** `{IN_FORCE_STATUS}`")
-            match_to   = (df['STATUS_TO'].astype(str).str.strip().str.upper() == IN_FORCE_STATUS).sum()
-            match_from = (df['STATUS_FROM'].astype(str).str.strip().str.upper() == IN_FORCE_STATUS).sum()
+            # Compare without forcing upper — respect exact casing of IN_FORCE_STATUS constant
+            match_to   = (df['STATUS_TO'].astype(str).str.strip() == IN_FORCE_STATUS).sum()
+            match_from = (df['STATUS_FROM'].astype(str).str.strip() == IN_FORCE_STATUS).sum()
             st.markdown(f"**Rows where STATUS_TO matches:** `{match_to:,}`")
             st.markdown(f"**Rows where STATUS_FROM matches:** `{match_from:,}`")
             if match_to == 0:
-                st.error("❌ No STATUS_TO rows match IN_FORCE_STATUS — update the IN_FORCE_STATUS constant at the top of the file to match the exact value shown above.")
-            if match_from == 0:
+                st.error("❌ No STATUS_TO rows match IN_FORCE_STATUS — update the IN_FORCE_STATUS constant at the top of the file to match a value from the table above.")
+            elif match_from == 0:
                 st.warning("⚠️ No STATUS_FROM rows match IN_FORCE_STATUS — policies will never show as lapsed.")
+            else:
+                st.success(f"✅ Status matching OK — {match_to:,} entries into inforce, {match_from:,} exits.")
 
             st.markdown("---")
             st.markdown("**Date column inspection (before renaming):**")
