@@ -502,8 +502,8 @@ def display_overview(retention_percentages, policy_count_matrix, selected_produc
     st.header(f"📈 2. Survival Percentage Table{product_suffix}{date_range_suffix}")
     st.dataframe(
         retention_percentages.style
-            .background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100, low=0.2, high=0.7)
-            .format('{:.1f}%', na_rep=""),
+            .format('{:.1f}%', na_rep="")
+            .background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100),
         use_container_width=True
     )
 
@@ -820,11 +820,11 @@ def display_monthly_cohort_analysis(df_ams_raw, all_carriers):
     st.plotly_chart(plot_monthly_cohort_survival(matrix), use_container_width=True)
     st.markdown("---")
     st.header("2. Survival Percentage Table")
-    st.dataframe(matrix.style.background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100, low=0.2, high=0.7)
-                 .format('{:.1f}%', na_rep="—"), use_container_width=True)
+    st.dataframe(matrix.style.format('{:.1f}%', na_rep="—")
+                 .background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100), use_container_width=True)
     st.subheader("Lapse Percentage Table")
-    st.dataframe((100-matrix).style.background_gradient(cmap='RdYlGn_r', axis=None, vmin=0, vmax=100, low=0.2, high=0.7)
-                 .format('{:.1f}%', na_rep="—"), use_container_width=True)
+    st.dataframe((100-matrix).style.format('{:.1f}%', na_rep="—")
+                 .background_gradient(cmap='RdYlGn_r', axis=None, vmin=0, vmax=100), use_container_width=True)
     st.markdown("---")
     st.header("3. Month-over-Month Lapse Rates")
     st.plotly_chart(plot_monthly_lapse_rates(matrix), use_container_width=True)
