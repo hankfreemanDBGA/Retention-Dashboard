@@ -65,6 +65,31 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
         st.warning("Query returned no data.")
         return pd.DataFrame(), [], {}
 
+    # --- DIAGNOSTIC EXPANDER ---
+    # Normalize column names first so we can inspect STATUS_TO / STATUS_FROM
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    if 'STATUS_TO' in df.columns and 'STATUS_FROM' in df.columns:
+        with st.expander("🔍 Data Diagnostic — expand to debug status values", expanded=True):
+            st.markdown("**Unique STATUS_TO values (top 30):**")
+            st.dataframe(
+                df['STATUS_TO'].astype(str).str.strip().value_counts().head(30).rename_axis('STATUS_TO').reset_index(name='Count'),
+                use_container_width=True, hide_index=True
+            )
+            st.markdown("**Unique STATUS_FROM values (top 30):**")
+            st.dataframe(
+                df['STATUS_FROM'].astype(str).str.strip().value_counts().head(30).rename_axis('STATUS_FROM').reset_index(name='Count'),
+                use_container_width=True, hide_index=True
+            )
+            st.markdown(f"**Current `IN_FORCE_STATUS` setting:** `{IN_FORCE_STATUS}`")
+            match_to   = (df['STATUS_TO'].astype(str).str.strip().str.upper() == IN_FORCE_STATUS).sum()
+            match_from = (df['STATUS_FROM'].astype(str).str.strip().str.upper() == IN_FORCE_STATUS).sum()
+            st.markdown(f"**Rows where STATUS_TO matches:** `{match_to:,}`")
+            st.markdown(f"**Rows where STATUS_FROM matches:** `{match_from:,}`")
+            if match_to == 0:
+                st.error("❌ No STATUS_TO rows match IN_FORCE_STATUS — update the IN_FORCE_STATUS constant at the top of the file to match the exact value shown above.")
+            if match_from == 0:
+                st.warning("⚠️ No STATUS_FROM rows match IN_FORCE_STATUS — policies will never show as lapsed.")
+
     # Normalize column names to uppercase
     df.columns = [str(c).strip().upper() for c in df.columns]
 
