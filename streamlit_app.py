@@ -7,7 +7,7 @@ from typing import Optional, Tuple, Dict, List
 import snowflake.connector
 
 # --- CONFIG ---
-IN_FORCE_STATUS = 'FEX INFORCE'
+IN_FORCE_STATUS = 'FEX Inforce'
 FILTER_START_DATE = '2024-W01'
 
 st.set_page_config(
@@ -116,11 +116,11 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
     df.drop_duplicates(inplace=True)
     st.info(f"🗑️ Removed {initial_count - len(df)} duplicate rows. {len(df)} rows remaining.")
 
-    # Use TASK_DATE_FROM as the event timestamp
-    if 'TASK_DATE_FROM' in df.columns:
-        df.rename(columns={'TASK_DATE_FROM': 'UPDATED_AT'}, inplace=True)
-    elif 'TASK_DATE_TO' in df.columns:
+    # Use TASK_DATE_TO as the event timestamp (fewer nulls, represents effective date)
+    if 'TASK_DATE_TO' in df.columns:
         df.rename(columns={'TASK_DATE_TO': 'UPDATED_AT'}, inplace=True)
+    elif 'TASK_DATE_FROM' in df.columns:
+        df.rename(columns={'TASK_DATE_FROM': 'UPDATED_AT'}, inplace=True)
     else:
         st.error("❌ No date column (TASK_DATE_FROM or TASK_DATE_TO) found.")
         return pd.DataFrame(), [], {}
@@ -132,8 +132,8 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
         return pd.DataFrame(), [], {}
 
     df['POLICY_NUMBER'] = df['POLICY_NUMBER'].astype(str).str.strip()
-    df['STATUS_TO']     = df['STATUS_TO'].astype(str).str.strip().str.upper().astype('category')
-    df['STATUS_FROM']   = df['STATUS_FROM'].astype(str).str.strip().str.upper().astype('category')
+    df['STATUS_TO']     = df['STATUS_TO'].astype(str).str.strip().astype('category')
+    df['STATUS_FROM']   = df['STATUS_FROM'].astype(str).str.strip().astype('category')
     df['PRODUCT_NAME']  = df['PRODUCT_NAME'].astype(str).str.strip().astype('category')
     df['CARRIER_NAME']  = df['CARRIER_NAME'].astype(str).str.strip().astype('category')
 
