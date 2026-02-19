@@ -90,6 +90,25 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
             if match_from == 0:
                 st.warning("⚠️ No STATUS_FROM rows match IN_FORCE_STATUS — policies will never show as lapsed.")
 
+            st.markdown("---")
+            st.markdown("**Date column inspection (before renaming):**")
+            for date_col in ['TASK_DATE_FROM', 'TASK_DATE_TO']:
+                if date_col in df.columns:
+                    parsed = pd.to_datetime(df[date_col], errors='coerce')
+                    null_count = parsed.isna().sum()
+                    st.markdown(f"`{date_col}` — nulls: `{null_count:,}` / `{len(df):,}` | "
+                                f"min: `{parsed.min()}` | max: `{parsed.max()}`")
+
+            st.markdown("---")
+            st.markdown("**Sample of raw rows where STATUS_TO = IN_FORCE_STATUS:**")
+            sample_cols = [c for c in ['POLICY_NUMBER','STATUS_FROM','STATUS_TO','TASK_DATE_FROM','TASK_DATE_TO'] if c in df.columns]
+            sample = df[df['STATUS_TO'].astype(str).str.strip().str.upper() == IN_FORCE_STATUS][sample_cols].head(20)
+            st.dataframe(sample, use_container_width=True, hide_index=True)
+
+            st.markdown("**Sample of raw rows where STATUS_FROM = IN_FORCE_STATUS:**")
+            sample2 = df[df['STATUS_FROM'].astype(str).str.strip().str.upper() == IN_FORCE_STATUS][sample_cols].head(20)
+            st.dataframe(sample2, use_container_width=True, hide_index=True)
+
     # Normalize column names to uppercase
     df.columns = [str(c).strip().upper() for c in df.columns]
 
