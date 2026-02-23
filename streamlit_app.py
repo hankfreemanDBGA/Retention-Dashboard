@@ -239,18 +239,9 @@ def calculate_retention_matrix(
     survival_matrix = df_survival.pivot_table(index='CohortWeek', columns='CohortPeriod', values='PolicyCount')
     retention_percentages = survival_matrix.div(survival_matrix.iloc[:, 0], axis=0) * 100
 
-    retention_percentages.index = retention_percentages.index.strftime('%Y-W%W')
-    survival_matrix.index = survival_matrix.index.strftime('%Y-W%W')
-    df_policies['CohortWeekStr'] = df_policies['CohortWeek'].dt.strftime('%Y-W%W')
-
-    with st.expander("🔍 Week Numbering Diagnostic", expanded=True):
-        test_date = pd.Timestamp('2025-08-18')
-        st.write(f"Test date: {test_date.date()}")
-        st.write(f"to_period('W'): {test_date.to_period('W')}")
-        st.write(f"strftime('%Y-W%W'): {test_date.strftime('%Y-W%W')}")
-        st.write(f"strftime('%Y-W%V'): {test_date.strftime('%Y-W%V')}")
-        st.write(f"period.strftime('%Y-W%W'): {test_date.to_period('W').strftime('%Y-W%W')}")
-        st.write(f"Cohort week labels in data (last 10): {sorted(retention_percentages.index.tolist())[-10:]}")
+    retention_percentages.index = retention_percentages.index.strftime('%Y-W%V')
+    survival_matrix.index = survival_matrix.index.strftime('%Y-W%V')
+    df_policies['CohortWeekStr'] = df_policies['CohortWeek'].dt.strftime('%Y-W%V')
 
     return retention_percentages, survival_matrix, df_policies, max_event_date
 
