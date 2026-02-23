@@ -522,35 +522,32 @@ def plot_monthly_lapse_rates(survival_matrix):
 
 def style_retention_heatmap(retention_pct: pd.DataFrame, policy_counts: pd.DataFrame) -> "pd.io.formats.style.Styler":
     """
-    Returns a Styler with:
-      - RdYlGn background gradient on the percentage values
-      - Tooltips showing "X / Y policies" on hover
+    Returns a Styler with a RdYlGn background gradient.
+    Each cell displays 'XX.X% (N)' where N is the surviving policy count.
     """
-    # Align counts to the same shape as retention_pct (fills with NaN where missing)
     counts_aligned = policy_counts.reindex_like(retention_pct)
 
-    # cohort size = count at period 0
-    cohort_sizes = policy_counts[0] if 0 in policy_counts.columns else policy_counts.iloc[:, 0]
+    def fmt(pct, cnt):
+        if pd.isna(pct):
+            return ""
+        if pd.notna(cnt):
+            return f"{pct:.1f}% ({int(cnt)})"
+        return f"{pct:.1f}%"
 
-    # Build tooltip strings: "X / N policies"
-    tooltip_df = pd.DataFrame(index=retention_pct.index, columns=retention_pct.columns, dtype=object)
-    for col in retention_pct.columns:
-        if col in counts_aligned.columns:
-            for row in retention_pct.index:
-                cnt = counts_aligned.loc[row, col]
-                total = cohort_sizes.get(row, np.nan)
-                if pd.notna(cnt) and pd.notna(total):
-                    tooltip_df.loc[row, col] = f"{int(cnt)} / {int(total)} policies"
-                else:
-                    tooltip_df.loc[row, col] = ""
-        else:
-            tooltip_df[col] = ""
+    # Build a same-shape DataFrame of display strings
+    display_df = pd.DataFrame(
+        [[fmt(retention_pct.loc[r, c],
+              counts_aligned.loc[r, c] if c in counts_aligned.columns else np.nan)
+          for c in retention_pct.columns]
+         for r in retention_pct.index],
+        index=retention_pct.index,
+        columns=retention_pct.columns,
+    )
 
+    # Apply gradient using the numeric retention_pct as the color map source
     styler = (
-        retention_pct.style
-        .format('{:.1f}%', na_rep="")
-        .background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100)
-        .set_tooltips(tooltip_df, props='visibility: visible; font-size: 0.85em; background-color: #333; color: #fff; padding: 4px 6px; border-radius: 4px;')
+        display_df.style
+        .background_gradient(cmap='RdYlGn', gmap=retention_pct.values, axis=None, vmin=0, vmax=100)
     )
     return styler
 
