@@ -66,7 +66,6 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
         return pd.DataFrame(), [], {}
 
     # --- DIAGNOSTIC EXPANDER ---
-    # Normalize column names first so we can inspect STATUS_TO / STATUS_FROM
     df.columns = [str(c).strip().upper() for c in df.columns]
     if 'STATUS_TO' in df.columns and 'STATUS_FROM' in df.columns:
         with st.expander("🔍 Data Diagnostic — expand to debug status values", expanded=True):
@@ -81,7 +80,6 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
                 use_container_width=True, hide_index=True
             )
             st.markdown(f"**Current `IN_FORCE_STATUS` setting:** `{IN_FORCE_STATUS}`")
-            # Compare without forcing upper — respect exact casing of IN_FORCE_STATUS constant
             match_to   = (df['STATUS_TO'].astype(str).str.strip() == IN_FORCE_STATUS).sum()
             match_from = (df['STATUS_FROM'].astype(str).str.strip() == IN_FORCE_STATUS).sum()
             st.markdown(f"**Rows where STATUS_TO matches:** `{match_to:,}`")
@@ -112,14 +110,12 @@ def _load_ams_events() -> Tuple[pd.DataFrame, List[str], Dict[str, List[str]]]:
             sample2 = df[df['STATUS_FROM'].astype(str).str.strip().str.upper() == IN_FORCE_STATUS][sample_cols].head(20)
             st.dataframe(sample2, use_container_width=True, hide_index=True)
 
-    # Normalize column names to uppercase
     df.columns = [str(c).strip().upper() for c in df.columns]
 
     initial_count = len(df)
     df.drop_duplicates(inplace=True)
     st.info(f"🗑️ Removed {initial_count - len(df)} duplicate rows. {len(df)} rows remaining.")
 
-    # Use TASK_DATE_TO as the event timestamp (fewer nulls, represents effective date)
     if 'TASK_DATE_TO' in df.columns:
         df.rename(columns={'TASK_DATE_TO': 'UPDATED_AT'}, inplace=True)
     elif 'TASK_DATE_FROM' in df.columns:
@@ -522,6 +518,43 @@ def plot_monthly_lapse_rates(survival_matrix):
     return fig
 
 
+# --- HEATMAP HELPER ---
+
+def style_retention_heatmap(retention_pct: pd.DataFrame, policy_counts: pd.DataFrame) -> "pd.io.formats.style.Styler":
+    """
+    Returns a Styler with:
+      - RdYlGn background gradient on the percentage values
+      - Tooltips showing "X / Y policies" on hover
+    """
+    # Align counts to the same shape as retention_pct (fills with NaN where missing)
+    counts_aligned = policy_counts.reindex_like(retention_pct)
+
+    # cohort size = count at period 0
+    cohort_sizes = policy_counts[0] if 0 in policy_counts.columns else policy_counts.iloc[:, 0]
+
+    # Build tooltip strings: "X / N policies"
+    tooltip_df = pd.DataFrame(index=retention_pct.index, columns=retention_pct.columns, dtype=object)
+    for col in retention_pct.columns:
+        if col in counts_aligned.columns:
+            for row in retention_pct.index:
+                cnt = counts_aligned.loc[row, col]
+                total = cohort_sizes.get(row, np.nan)
+                if pd.notna(cnt) and pd.notna(total):
+                    tooltip_df.loc[row, col] = f"{int(cnt)} / {int(total)} policies"
+                else:
+                    tooltip_df.loc[row, col] = ""
+        else:
+            tooltip_df[col] = ""
+
+    styler = (
+        retention_pct.style
+        .format('{:.1f}%', na_rep="")
+        .background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100)
+        .set_tooltips(tooltip_df, props='visibility: visible; font-size: 0.85em; background-color: #333; color: #fff; padding: 4px 6px; border-radius: 4px;')
+    )
+    return styler
+
+
 # --- DISPLAY FUNCTIONS ---
 
 def display_overview(retention_percentages, policy_count_matrix, selected_product, start_cohort, end_cohort):
@@ -548,9 +581,7 @@ def display_overview(retention_percentages, policy_count_matrix, selected_produc
     st.markdown("---")
     st.header(f"📈 2. Survival Percentage Table{product_suffix}{date_range_suffix}")
     st.dataframe(
-        retention_percentages.style
-            .format('{:.1f}%', na_rep="")
-            .background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100),
+        style_retention_heatmap(retention_percentages, policy_count_matrix),
         use_container_width=True
     )
 
@@ -656,18 +687,17 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
         max_months_display = st.selectbox("Max Months Display", [3,6,9,12,18,24], index=3)
 
     max_weeks_display = max_months_display * 4
+
+    # ── Milestone checkboxes (single set, no duplicates) ──────────────────────
     st.markdown("**Select milestone months:**")
     mcols = st.columns(6)
-    selected_milestones_months = [
-        m for i, m in enumerate(range(1, 13))
-        if st.checkbox(f"Month {m}", value=True, key=f"milestone_month_{m}", label_visibility="visible") or False
-    ]
-    # rebuild correctly
     selected_milestones_months = []
     for i in range(12):
         with mcols[i % 6]:
             if st.checkbox(f"Mo {i+1}", value=True, key=f"ms_mo_{i+1}"):
-                selected_milestones_months.append(i+1)
+                selected_milestones_months.append(i + 1)
+    # ──────────────────────────────────────────────────────────────────────────
+
     selected_milestones = [int(m * 4.33) for m in sorted(selected_milestones_months)]
     st.markdown("---")
 
@@ -863,15 +893,32 @@ def display_monthly_cohort_analysis(df_ams_raw, all_carriers):
     c[3].metric("Monthly Cohorts", len(matrix))
     st.markdown("---")
 
+    # For the monthly heatmap we need counts alongside the survival pct matrix.
+    # Reconstruct counts from the survival pct matrix + cohort sizes from df_p.
+    cohort_sizes = df_p.groupby(df_p['EnrollmentDate'].dt.to_period('M').dt.strftime('%Y-%m'))['POLICY_NUMBER'].count()
+    monthly_counts = matrix.copy()
+    for col in matrix.columns:
+        for row in matrix.index:
+            sz = cohort_sizes.get(row, np.nan)
+            pct = matrix.loc[row, col]
+            monthly_counts.loc[row, col] = round(pct / 100 * sz) if pd.notna(pct) and pd.notna(sz) else np.nan
+
     st.header("1. Monthly Cohort Survival Curves")
     st.plotly_chart(plot_monthly_cohort_survival(matrix), use_container_width=True)
     st.markdown("---")
     st.header("2. Survival Percentage Table")
-    st.dataframe(matrix.style.format('{:.1f}%', na_rep="—")
-                 .background_gradient(cmap='RdYlGn', axis=None, vmin=0, vmax=100), use_container_width=True)
+    st.dataframe(
+        style_retention_heatmap(matrix, monthly_counts),
+        use_container_width=True
+    )
     st.subheader("Lapse Percentage Table")
-    st.dataframe((100-matrix).style.format('{:.1f}%', na_rep="—")
-                 .background_gradient(cmap='RdYlGn_r', axis=None, vmin=0, vmax=100), use_container_width=True)
+    lapse_matrix = 100 - matrix
+    st.dataframe(
+        lapse_matrix.style
+            .format('{:.1f}%', na_rep="—")
+            .background_gradient(cmap='RdYlGn_r', axis=None, vmin=0, vmax=100),
+        use_container_width=True
+    )
     st.markdown("---")
     st.header("3. Month-over-Month Lapse Rates")
     st.plotly_chart(plot_monthly_lapse_rates(matrix), use_container_width=True)
