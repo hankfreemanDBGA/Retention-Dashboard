@@ -721,7 +721,7 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
 
     with st.spinner("Calculating snapshots..."):
         snapshot_curves, snapshot_milestones, snapshot_counts = {}, {}, {}
-        debug_info = {}  # NEW: collect debug data per snapshot
+        debug_info = {}
 
         for obs in obs_points:
             ws = obs - pd.DateOffset(months=window_months)
@@ -733,13 +733,14 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                 continue
 
             avg_curve = {}
-            snapshot_debug_rows = []  # NEW
+            snapshot_debug_rows = []
 
             for p in range(max_weeks_display + 1):
                 if p not in filtered.columns:
                     continue
+
                 mature_values = []
-                mature_weights = []  # NEW: track policy counts for weighted average
+                mature_weights = []
 
                 for cw in included:
                     if cw not in filtered.index:
@@ -753,22 +754,13 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                     weeks_available = (max_event_date - cohort_dt).days / 7
                     if weeks_available < p:
                         continue
-
-                    # NEW: get the raw policy count for this cohort at period 0
-                    # (cohort size) from df_policies_detail
                     cohort_size = len(df_policies_detail[df_policies_detail['CohortWeekStr'] == cw])
                     if cohort_size < min_policies:
-                        continue  # skip tiny cohorts entirely
+                        continue
 
                     mature_values.append(val)
                     mature_weights.append(cohort_size)
 
-                # NEW: weighted average by cohort size instead of simple mean,
-                # and require at least 3 qualifying cohorts
-                if len(mature_values) >= 3:
-                    avg_curve[p] = np.average(mature_values, weights=mature_weights)
-
-                    # NEW: log every cohort's status at the milestone periods
                     if p in selected_milestones:
                         snapshot_debug_rows.append({
                             'Cohort': cw,
@@ -776,22 +768,19 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                             'Period (wks)': p,
                             'Approx Month': round(p / 4.33),
                             'Weeks Available': round(weeks_available, 1),
-                            'Mature?': is_mature,
+                            'Cohort Size': cohort_size,
                             'Survival %': round(val, 1),
                         })
 
-                    if is_mature:
-                        mature_values.append(val)
-
                 if len(mature_values) >= 3:
-                    avg_curve[p] = np.mean(mature_values)
+                    avg_curve[p] = np.average(mature_values, weights=mature_weights)
 
             if avg_curve:
                 lbl = obs.strftime('%Y-%m')
                 snapshot_curves[lbl] = avg_curve
                 snapshot_counts[lbl] = len(included)
                 snapshot_milestones[lbl] = {m: avg_curve[m] for m in selected_milestones if m in avg_curve}
-                debug_info[lbl] = pd.DataFrame(snapshot_debug_rows)  # NEW
+                debug_info[lbl] = pd.DataFrame(snapshot_debug_rows)
 
     if not snapshot_curves:
         st.warning("Could not generate snapshots.")
@@ -800,23 +789,15 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
     st.success(f"Generated **{len(snapshot_curves)}** snapshots")
     snapshot_dates = list(snapshot_curves.keys())
 
-    # NEW: debug expander — focus on the last 3 snapshots where the weirdness appears
     with st.expander("🔍 Debug: Cohort Maturity for Recent Snapshots", expanded=False):
         for lbl in snapshot_dates[-3:]:
             st.markdown(f"**Snapshot: {lbl}**")
             if lbl in debug_info and not debug_info[lbl].empty:
                 df_dbg = debug_info[lbl]
-                st.dataframe(
-                    df_dbg.style.applymap(
-                        lambda v: 'background-color: #ffcccc' if v is False else '',
-                        subset=['Mature?']
-                    ),
-                    use_container_width=True, hide_index=True
-                )
-                immature = (~df_dbg['Mature?']).sum()
-                st.caption(f"{immature} cohort-period combinations excluded as immature out of {len(df_dbg)} total")
+                st.dataframe(df_dbg, use_container_width=True, hide_index=True)
+                st.caption(f"{len(df_dbg)} cohort-period combinations passed all filters")
             else:
-                st.write("No debug data.")
+                st.write("No debug data (all cohorts filtered out).")
             st.markdown("---")
 
     col1, col2 = st.columns([3,1])
