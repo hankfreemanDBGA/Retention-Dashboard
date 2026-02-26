@@ -662,7 +662,7 @@ def display_product_comparison(df_ams):
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
-def display_persistency_trends(df_ams, df_policies_detail, retention_percentages):
+def display_persistency_trends(df_ams, df_policies_detail, retention_percentages, max_event_date):
     st.title("📈 Persistency Trends Over Time")
     st.markdown("---")
     if df_policies_detail.empty or retention_percentages.empty:
@@ -1009,7 +1009,7 @@ def main():
     with tabs[2]:
         display_product_comparison(df_ams)
     with tabs[3]:
-        display_persistency_trends(df_ams, df_detail, ret)
+        display_persistency_trends(df_ams, df_detail, ret, max_dt)
     with tabs[4]:
         display_monthly_cohort_analysis(df_ams_raw, all_carriers_list)
     with tabs[5]:
