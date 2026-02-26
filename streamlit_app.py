@@ -716,6 +716,8 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
 
     with st.spinner("Calculating snapshots..."):
         snapshot_curves, snapshot_milestones, snapshot_counts = {}, {}, {}
+        debug_info = {}  # NEW: collect debug data per snapshot
+
         for obs in obs_points:
             ws = obs - pd.DateOffset(months=window_months)
             included = [cw for cw, dt in valid_cohorts if ws <= dt < obs]
@@ -726,13 +728,11 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                 continue
 
             avg_curve = {}
+            snapshot_debug_rows = []  # NEW
+
             for p in range(max_weeks_display + 1):
                 if p not in filtered.columns:
                     continue
-                # --- MATURITY GUARD ---
-                # Only include a cohort's value at period p if that cohort
-                # has actually had enough time to reach week p.
-                # We use max_event_date as the data cutoff.
                 mature_values = []
                 for cw in included:
                     if cw not in filtered.index:
@@ -740,13 +740,25 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                     val = filtered.loc[cw, p]
                     if pd.isna(val):
                         continue
-                    # Recover the cohort's enrollment date
                     cohort_dt = cohort_dates.get(cw)
                     if cohort_dt is None:
                         continue
-                    # Weeks elapsed between cohort start and data cutoff
                     weeks_available = (max_event_date - cohort_dt).days / 7
-                    if weeks_available >= p:
+                    is_mature = weeks_available >= p
+
+                    # NEW: log every cohort's status at the milestone periods
+                    if p in selected_milestones:
+                        snapshot_debug_rows.append({
+                            'Cohort': cw,
+                            'Cohort Start': cohort_dt.strftime('%Y-%m-%d'),
+                            'Period (wks)': p,
+                            'Approx Month': round(p / 4.33),
+                            'Weeks Available': round(weeks_available, 1),
+                            'Mature?': is_mature,
+                            'Survival %': round(val, 1),
+                        })
+
+                    if is_mature:
                         mature_values.append(val)
 
                 if len(mature_values) >= 3:
@@ -757,6 +769,7 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                 snapshot_curves[lbl] = avg_curve
                 snapshot_counts[lbl] = len(included)
                 snapshot_milestones[lbl] = {m: avg_curve[m] for m in selected_milestones if m in avg_curve}
+                debug_info[lbl] = pd.DataFrame(snapshot_debug_rows)  # NEW
 
     if not snapshot_curves:
         st.warning("Could not generate snapshots.")
@@ -764,6 +777,25 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
 
     st.success(f"Generated **{len(snapshot_curves)}** snapshots")
     snapshot_dates = list(snapshot_curves.keys())
+
+    # NEW: debug expander — focus on the last 3 snapshots where the weirdness appears
+    with st.expander("🔍 Debug: Cohort Maturity for Recent Snapshots", expanded=False):
+        for lbl in snapshot_dates[-3:]:
+            st.markdown(f"**Snapshot: {lbl}**")
+            if lbl in debug_info and not debug_info[lbl].empty:
+                df_dbg = debug_info[lbl]
+                st.dataframe(
+                    df_dbg.style.applymap(
+                        lambda v: 'background-color: #ffcccc' if v is False else '',
+                        subset=['Mature?']
+                    ),
+                    use_container_width=True, hide_index=True
+                )
+                immature = (~df_dbg['Mature?']).sum()
+                st.caption(f"{immature} cohort-period combinations excluded as immature out of {len(df_dbg)} total")
+            else:
+                st.write("No debug data.")
+            st.markdown("---")
 
     col1, col2 = st.columns([3,1])
     with col1:
