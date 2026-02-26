@@ -675,6 +675,7 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
         return
 
     cohort_dates = df_policies_detail.groupby('CohortWeekStr')['EnrollmentDate'].min().sort_index()
+
     col1, col2, col3 = st.columns(3)
     with col1:
         window_months = st.selectbox("Cohort Window (months)", [1,2,4,8], index=2)
@@ -682,15 +683,14 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
         step_months = st.selectbox("Step Size (months)", [1,2,3,6], index=0)
     with col3:
         max_months_display = st.selectbox("Max Months Display", [3,6,9,12,18,24], index=3)
-    # NEW
+
     min_policies = st.number_input(
-        "Min policies per cohort-period (excludes small cohorts)", 
+        "Min policies per cohort (excludes small cohorts)",
         min_value=5, max_value=100, value=20, step=5
     )
 
     max_weeks_display = max_months_display * 4
 
-    # ── Milestone checkboxes (single set, no duplicates) ──────────────────────
     st.markdown("**Select milestone months:**")
     mcols = st.columns(6)
     selected_milestones_months = []
@@ -698,7 +698,6 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
         with mcols[i % 6]:
             if st.checkbox(f"Mo {i+1}", value=True, key=f"ms_mo_{i+1}"):
                 selected_milestones_months.append(i + 1)
-    # ──────────────────────────────────────────────────────────────────────────
 
     selected_milestones = [int(m * 4.33) for m in sorted(selected_milestones_months)]
     st.markdown("---")
@@ -793,58 +792,8 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
         for lbl in snapshot_dates[-3:]:
             st.markdown(f"**Snapshot: {lbl}**")
             if lbl in debug_info and not debug_info[lbl].empty:
-                df_dbg = debug_info[lbl]
-                st.dataframe(df_dbg, use_container_width=True, hide_index=True)
-                st.caption(f"{len(df_dbg)} cohort-period combinations passed all filters")
-            else:
-                st.write("No debug data (all cohorts filtered out).")
-            st.markdown("---")
-
-    col1, col2 = st.columns([3,1])
-    with col1:
-        mode = st.radio("Comparison Mode", ["Latest vs Historical","Custom Selection","Show All"], horizontal=True)
-    with col2:
-        show_counts = st.checkbox("Show cohort counts", value=True)
-
-    if mode == "Latest vs Historical":
-        sel_snaps = sorted(set([snapshot_dates[-1]] +
-            [snapshot_dates[max(0, len(snapshot_dates)-1-(m//step_months))] for m in [3,6,12]]))
-    elif mode == "Custom Selection":
-        sel_snaps = st.multiselect("Select observation points", snapshot_dates,
-                                    default=[snapshot_dates[0], snapshot_dates[-1]])
-    else:
-        sel_snaps = snapshot_dates
-
-    if sel_snaps:
-        fig = go.Figure()
-        colors = px.colors.qualitative.Plotly
-        for idx, obs in enumerate(sel_snaps):
-            curve = snapshot_curves[obs]
-            ps = sorted(curve.keys())
-            lbl = f"{obs} ({snapshot_counts[obs]} cohorts)" if show_counts else obs
-            fig.add_trace(go.Scatter(
-                x=[p/4.33 for p in ps], y=[curve[p] for p in ps],
-                mode='lines+markers', name=lbl,
-                line=dict(color=colors[idx % len(colors)], width=3), marker=dict(size=5)
-            ))
-        fig.update_layout(
-            title=f"Survival Curves by Observation Point ({window_months}-month window)",
-            xaxis_title='Months Since Enrollment', yaxis_title='Average Survival %',
-            yaxis_range=[0,100], template='plotly_white',
-            legend=dict(yanchor="top", y=-0.15, xanchor="center", x=0.5, orientation='h')
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    if selected_milestones_months:
-        st.header("Milestone Persistency Trends")
-        md = [{'Observation': obs, 'Month': f'Month {round(w/4.33)}', 'Survival %': v}
-              for obs, ms in snapshot_milestones.items() for w, v in ms.items()]
-        if md:
-            fig_m = px.line(pd.DataFrame(md), x='Observation', y='Survival %', color='Month',
-                            markers=True, title=f"Persistency Milestones ({window_months}-month window)")
-            fig_m.update_layout(yaxis_range=[0,100], template='plotly_white',
-                                  legend=dict(yanchor="top", y=-0.15, xanchor="center", x=0.5, orientation='h'))
-            st.plotly_chart(fig_m, use_container_width=True)
+                st.dataframe(debug_info[lbl], use_container_width=True, hide_index=True)
+                st.caption(f"{len(debug_info[lbl])} cohort-
 
 
 def display_combination_comparison(df_ams_raw, all_carriers, carrier_product_map):
