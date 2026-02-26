@@ -724,9 +724,34 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
             filtered = retention_percentages[retention_percentages.index.isin(included)]
             if filtered.empty:
                 continue
-            avg_curve = {p: filtered[p].dropna().mean()
-                         for p in range(max_weeks_display + 1)
-                         if p in filtered.columns and len(filtered[p].dropna()) >= 3}
+
+            avg_curve = {}
+            for p in range(max_weeks_display + 1):
+                if p not in filtered.columns:
+                    continue
+                # --- MATURITY GUARD ---
+                # Only include a cohort's value at period p if that cohort
+                # has actually had enough time to reach week p.
+                # We use max_event_date as the data cutoff.
+                mature_values = []
+                for cw in included:
+                    if cw not in filtered.index:
+                        continue
+                    val = filtered.loc[cw, p]
+                    if pd.isna(val):
+                        continue
+                    # Recover the cohort's enrollment date
+                    cohort_dt = cohort_dates.get(cw)
+                    if cohort_dt is None:
+                        continue
+                    # Weeks elapsed between cohort start and data cutoff
+                    weeks_available = (max_event_date - cohort_dt).days / 7
+                    if weeks_available >= p:
+                        mature_values.append(val)
+
+                if len(mature_values) >= 3:
+                    avg_curve[p] = np.mean(mature_values)
+
             if avg_curve:
                 lbl = obs.strftime('%Y-%m')
                 snapshot_curves[lbl] = avg_curve
