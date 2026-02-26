@@ -682,6 +682,11 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
         step_months = st.selectbox("Step Size (months)", [1,2,3,6], index=0)
     with col3:
         max_months_display = st.selectbox("Max Months Display", [3,6,9,12,18,24], index=3)
+    # NEW
+    min_policies = st.number_input(
+        "Min policies per cohort-period (excludes small cohorts)", 
+        min_value=5, max_value=100, value=20, step=5
+    )
 
     max_weeks_display = max_months_display * 4
 
@@ -734,6 +739,8 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                 if p not in filtered.columns:
                     continue
                 mature_values = []
+                mature_weights = []  # NEW: track policy counts for weighted average
+
                 for cw in included:
                     if cw not in filtered.index:
                         continue
@@ -744,7 +751,22 @@ def display_persistency_trends(df_ams, df_policies_detail, retention_percentages
                     if cohort_dt is None:
                         continue
                     weeks_available = (max_event_date - cohort_dt).days / 7
-                    is_mature = weeks_available >= p
+                    if weeks_available < p:
+                        continue
+
+                    # NEW: get the raw policy count for this cohort at period 0
+                    # (cohort size) from df_policies_detail
+                    cohort_size = len(df_policies_detail[df_policies_detail['CohortWeekStr'] == cw])
+                    if cohort_size < min_policies:
+                        continue  # skip tiny cohorts entirely
+
+                    mature_values.append(val)
+                    mature_weights.append(cohort_size)
+
+                # NEW: weighted average by cohort size instead of simple mean,
+                # and require at least 3 qualifying cohorts
+                if len(mature_values) >= 3:
+                    avg_curve[p] = np.average(mature_values, weights=mature_weights)
 
                     # NEW: log every cohort's status at the milestone periods
                     if p in selected_milestones:
